@@ -1,0 +1,19 @@
+MATCH (n:Person)-[:FRIENDS_WITH]->(m:Person)
+WHERE n.name = 'Alice'
+RETURN m.name
+
+MATCH (n:Person)-[:FRIENDS_WITH]->(m:Person)
+WHERE n.name = 'Alice' AND head(db.labels(n)) = 'test'
+RETURN m.name
+
+MATCH (n:Person)-[:FRIENDS_WITH]->(m:Person)
+WHERE n.name = 'Alice' AND left(head(db.labels(n)), 1) = 't'
+RETURN m.name
+
+MATCH (n:Person)-[:FRIENDS_WITH]->(m:Person)
+WHERE n.name = 'Alice' AND substring(head(db.labels(n)), 1, 2) = 'te'
+RETURN m.name
+
+MATCH (n:Person)-[:FRIENDS_WITH]->(m:Person)
+WHERE n.name = 'Alice' AND EXISTS {CALL {WITH n MATCH (n) RETURN head(labels(n))} WHERE head(labels(n)) STARTS WITH 't'}
+RETURN m.name
