@@ -17,3 +17,30 @@ RETURN m.name
 MATCH (n:Person)-[:FRIENDS_WITH]->(m:Person)
 WHERE n.name = 'Alice' AND EXISTS {CALL {WITH n MATCH (n) RETURN head(labels(n))} WHERE head(labels(n)) STARTS WITH 't'}
 RETURN m.name
+
+MATCH (n:Person)-[:FRIENDS_WITH]->(m:Person)
+WHERE n.name = 'Alice' AND substring(labels(n)[0], 0, 2) = 'te'
+RETURN m.name
+
+MATCH (n:Person)
+WHERE n.name = 'Alice' AND EXISTS {
+  CALL {
+    WITH 1 AS one
+    RETURN one
+  }
+}
+RETURN n.name
+
+CALL {
+  WITH count(db.labels()) AS numLabels
+  RETURN numLabels >= 10 AS labelCountIsGreaterOrEqual
+}
+
+CALL db.labels() YIELD label
+WITH label
+SKIP 1
+LIMIT 1
+WITH 1 AS one
+RETURN one
+
+
