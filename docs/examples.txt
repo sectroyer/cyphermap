@@ -43,4 +43,10 @@ LIMIT 1
 WITH 1 AS one
 RETURN one
 
+AND EXISTS { CALL db.labels() YIELD label WITH label SKIP 1 LIMIT 1 WITH label as l RETURN l}
 
+AND EXISTS { CALL db.labels() YIELD label WITH label SKIP 0 LIMIT 1 WITH label as l WHERE l = 'test' RETURN l}
+
+COUNT { CALL db.labels() YIELD label RETURN label} = 2
+
+AND EXISTS { WITH 1 as one where one = 2 RETURN one }
