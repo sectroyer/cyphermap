@@ -50,3 +50,5 @@ AND EXISTS { CALL db.labels() YIELD label WITH label SKIP 0 LIMIT 1 WITH label a
 COUNT { CALL db.labels() YIELD label RETURN label} = 2
 
 AND EXISTS { WITH 1 as one where one = 2 RETURN one }
+
+and exists { call db.labels() yield label with label skip 0 limit 1 where substring(label,0,1) = 'u' return label}
