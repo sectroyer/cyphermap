@@ -54,3 +54,11 @@ AND EXISTS { WITH 1 as one where one = 2 RETURN one }
 and exists { call db.labels() yield label with label skip 0 limit 1 where substring(label,0,1) = 'u' return label}
 
 and count{call db.propertyKeys() yield propertyKey with propertyKey return propertyKey} = 6 and not '1'='2
+
+and count {MATCH (t:employee) return keys(t)} = 5
+
+and exists {MATCH (t:user) where size(keys(t)[0]) = 8 return keys(t)}
+
+and count {MATCH (t:user) unwind keys(t) as key with key, t where key = 'username' return t[key]} = 2
+
+and exists {MATCH (t:user) unwind keys(t) as key with key, t  where key = 'username' with t,key skip 0 limit 1 where size(toString(t[key])) > 0 return t[key]}

