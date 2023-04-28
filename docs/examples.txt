@@ -55,6 +55,8 @@ and exists { call db.labels() yield label with label skip 0 limit 1 where substr
 
 and count{call db.propertyKeys() yield propertyKey with propertyKey return propertyKey} = 6 and not '1'='2
 
+and count {match(u:employee) call db.propertyKeys() yield propertyKey with propertyKey where not isEmpty(u[propertyKey]) with distinct propertyKey skip 0 limit 1 where substring(propertyKey,0,1)='n' return propertyKey} = 1
+
 and count {MATCH (t:employee) return keys(t)} = 5
 
 and exists {MATCH (t:user) where size(keys(t)[0]) = 8 return keys(t)}
