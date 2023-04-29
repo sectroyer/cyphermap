@@ -23,7 +23,7 @@ Dump key values for properties 'username' and 'password' in relation to label 'u
 ./cyphermap.py -u "http://127.0.0.1:8001/search" -d "search=a*" -c "session=032bdb4a-9dda-4db7-9b08-6a46df575387;"  -s Sarah -P user -K username,password
 ```
 
-## Blind string-based enumeration
+## Blind time-based enumeration
 
 Listing labels:
 ```
